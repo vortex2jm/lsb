@@ -41,10 +41,15 @@ fn main() {
 // ==========================================================
 fn run_hide(msg: &str, img: &mut RgbImage, file_path: &str) {
     let message: &[u8] = msg.as_bytes();
+    let msg_len= message.len() as u16;  // Type casting because usize has 64bits (too large)
+
+    let mut payload: Vec<u8> = Vec::new();
+    payload.extend_from_slice(&msg_len.to_be_bytes());  // Inject the message length as the first 2 bytes
+    payload.extend_from_slice(message);
 
     // Store message bits values in a vector
     let mut message_bits: Vec<u8> = Vec::new();
-    for byte in message {
+    for byte in payload {
         for i in (0..8).rev() {
             message_bits.push((byte >> i) & 1);
         }
@@ -86,8 +91,13 @@ fn run_show(img: &mut RgbImage) {
         message_bytes.push(byte);
     }
 
-    // Convert bytes to string
-    if let Ok(message) = String::from_utf8(message_bytes) {
+    // Message length is stored in the first 2 bytes
+    let mut len_array = [0u8; 2];
+    len_array.copy_from_slice(&message_bytes[0..2]);
+    let msg_len = u16::from_be_bytes(len_array) as usize;
+
+    // Convert message bytes to string
+    if let Ok(message) = String::from_utf8(message_bytes[2..2 + msg_len].to_vec()) {
         println!("Hidden message: {}", message);
     } else {
         println!("Failed to decode hidden message.");
