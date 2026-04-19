@@ -1,14 +1,22 @@
-use clap::Parser;
-use image::ImageReader;
+use clap::{Parser, Subcommand};
+use image::{ImageReader, RgbImage};
+
+#[derive(Debug, Subcommand)]
+enum OpMode {
+    Hide { message: String },
+    Show,
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
     file_path: String,
+
+    #[command(subcommand)]
+    mode: OpMode,
 }
 
-fn main() {    
-
+fn main() {
     let args = Cli::parse();
     let file_path = args.file_path;
 
@@ -18,22 +26,70 @@ fn main() {
         .unwrap()
         .into_rgb8();
 
+    match args.mode {
+        OpMode::Hide { message } => {
+            println!("Hiding message in image...");
+            run_hide(&message, &mut img, &file_path);
+        }
+        OpMode::Show => {
+            println!("Showing hidden message from image...");
+            run_show(&mut img);
+        }
+    }
+}
 
-    let message = "Hello, my name is Joao".as_bytes();
-    let mut bits = message.iter()
-        .flat_map(|byte| (0..8).rev().map(move |i| (byte >> i) & 1));
+// ==========================================================
+fn run_hide(msg: &str, img: &mut RgbImage, file_path: &str) {
+    let message: &[u8] = msg.as_bytes();
 
+    // Store message bits values in a vector
+    let mut message_bits: Vec<u8> = Vec::new();
+    for byte in message {
+        for i in (0..8).rev() {
+            message_bits.push((byte >> i) & 1);
+        }
+    }
+
+    let mut bits_iter = message_bits.iter();
+
+    // Inject message bits into the image pixels
     for pixel in img.pixels_mut() {
         for i in 0..3 {
-            if let Some(bit) = bits.next() {
-                pixel[i] = set_lsb(pixel[i], bit);
+            if let Some(bit) = bits_iter.next() {
+                pixel[i] = (pixel[i] & 0b1111_1110) | (bit & 1);    // Set the least significant bit
             }
         }
     }
 
-    img.save(format!("encoded-{}", &file_path)).unwrap();
+    // Save the modified image
+    img.save(format!("hidden-{}", &file_path)).unwrap();
 }
 
-fn set_lsb(value: u8, bit: u8) -> u8 {
-    (value & 0b1111_1110) | (bit & 1)
+// ================================================
+fn run_show(img: &mut RgbImage) {
+    let mut message_bits: Vec<u8> = Vec::new();
+
+    // Extract the least significant bits from the image pixels
+    for pixel in img.pixels() {
+        for i in 0..3 {
+            message_bits.push(pixel[i] & 1);    // Get the least significant bit
+        }
+    }
+
+    // Convert bits back to bytes
+    let mut message_bytes: Vec<u8> = Vec::new();
+    for chunk in message_bits.chunks(8) {
+        let mut byte = 0u8;
+        for (i, bit) in chunk.iter().enumerate() {
+            byte |= bit << (7 - i);
+        }
+        message_bytes.push(byte);
+    }
+
+    // Convert bytes to string
+    if let Ok(message) = String::from_utf8(message_bytes) {
+        println!("Hidden message: {}", message);
+    } else {
+        println!("Failed to decode hidden message.");
+    }
 }
